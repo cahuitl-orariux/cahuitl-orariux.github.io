@@ -1,15 +1,15 @@
 <script lang="ts">
 	interface Props {
-		click: (nombre: string) => void;
-		nombre: string;
+		paramsClick: any;
+		click: (paramsClick: any) => void;
 	}
-	let { click, nombre }: Props = $props();
+	let { click, paramsClick }: Props = $props();
 </script>
 
 <button
 	aria-label="Eliminar"
 	class="ratio-1x1 center flex w-full items-center justify-center p-0!"
-	onclick={() => click(nombre)}
+	onclick={() => click(paramsClick)}
 >
 	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
 		<path

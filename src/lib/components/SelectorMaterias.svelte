@@ -5,6 +5,7 @@
 	import Eliminar from './Eliminar.svelte';
 	import FlechaDropdown from './FlechaDropdown.svelte';
 	import Dropdown from './Dropdown.svelte';
+	import SelectorElementoMateria from './SelectorElementoMateria.svelte';
 
 	interface Props {
 		todasLasMaterias: Materia[];
@@ -13,6 +14,9 @@
 
 	let { todasLasMaterias, materiasSeleccionadas = $bindable([]) }: Props = $props();
 
+	/**
+	 * Nombres de todas las materias
+	 */
 	let nombresDeMaterias: string[] = $derived(
 		obtenerNombresDeMaterias(todasLasMaterias).values().toArray()
 	);
@@ -21,7 +25,7 @@
 	/**
 	 * Proxy para el menú de detalle de un elemento seleccionable
 	 */
-	interface elementoDetalle {
+	export interface elementoDetalle {
 		/**
 		 * Nombre a mostrar en el menú de detalle
 		 */
@@ -31,7 +35,7 @@
 		 */
 		idMateria: string;
 	}
-	interface ModoSeleccion {
+	export interface ModoSeleccion {
 		/**
 		 * Determina los nombres de los elementos seleccionables, dado el modo de seleccion
 		 */
@@ -51,15 +55,67 @@
 		eliminar: (nombre: string) => void;
 	}
 
-	const modosSeleccion: Record<string, ModoSeleccion> = {
+	/*
+         TODO: refactorizar
+         No recuerdo exactamente la razón de la separación en la función y el diccionario, parece ser un proxy que en algo se necesita, pero no distingo exactamente qué. Por ende no sé como nombrar la diferencia.
+        */
+	const modosSeleccion = (modo: string): ModoSeleccion => {
+		const modoSeleccion = modosSeleccionA[modo];
+
+		return {
+			selector: () => {
+				return modoSeleccion.selector();
+			},
+			menuDetalle: (nombre: string) => {
+				return new Set(modoSeleccion.menuDetalle(nombre)).values().toArray();
+			},
+			agregar: (nombre: string) => modoSeleccion.agregar(nombre),
+			eliminar: (nombre: string) => modoSeleccion.eliminar(nombre)
+		};
+	};
+
+	const modosSeleccionA: Record<string, ModoSeleccion> = {
 		'Por materia': {
 			selector: () => nombresDeMaterias,
 			menuDetalle: (materiaNombre: string) => {
-				return todasLasMaterias
-					.filter((materia) => materia.nombre === materiaNombre)
-					.map((materia) => {
-						return { nombre: materia.profesor, idMateria: materia.id };
+				const materiasDeAsignatura = todasLasMaterias.filter(
+					(materia) => materia.nombre === materiaNombre
+				);
+
+				/**
+				 * Implementación de los tres modos de detalle:
+				 * 1. Por profesor: ideal cuando son pocos grupos ( < 5)
+				 * 2. Por turno: ideal cuando hay muchos grupos ( >= 5)
+				 * 3. Inteligente: define entre ambos modos automáticamente
+				 */
+				const determinarModoDetalle = (materias: Materia[]): 'por_profesor' | 'por_turno' => {
+					// Modo inteligente: decide automáticamente basado en la cantidad de grupos
+					return materias.length < 5 ? 'por_profesor' : 'por_turno';
+				};
+
+				const modoDetalle = determinarModoDetalle(materiasDeAsignatura);
+
+				if (modoDetalle === 'por_profesor') {
+					// Mostrar por profesor (nombre del profesor)
+					return materiasDeAsignatura.map((materia) => ({
+						nombre: materia.profesor,
+						idMateria: materia.id
+					}));
+				} else {
+					// Mostrar por turno (grupo + horario)
+					return materiasDeAsignatura.map((materia) => {
+						// Extraer información del horario para mostrar el turno
+						const primeraClase = materia.horario[0];
+						const horarioInfo = primeraClase
+							? `${primeraClase.dia} ${primeraClase.horaInicio}-${primeraClase.horaFin}`
+							: 'Sin horario';
+
+						return {
+							nombre: `${materia.grupo}`,
+							idMateria: materia.id
+						};
 					});
+				}
 			},
 			agregar: (materiaNombre: string) => {
 				console.log('Agregar por materia: ', materiaNombre);
@@ -87,7 +143,12 @@
 		'Por profesor': {
 			selector: () => profesores,
 			menuDetalle: (profesorNombre: string) => {
-				return [];
+				return todasLasMaterias
+					.filter((materia) => materia.profesor === profesorNombre)
+					.map((materia) => ({
+						nombre: `${materia.nombre} (${materia.grupo})`,
+						idMateria: materia.id
+					}));
 			},
 			agregar: (profesorNombre: string) => {
 				console.log('Agregar por profesor: ', profesorNombre);
@@ -152,9 +213,6 @@
 	let dropdownOpen = $state(false);
 	let activeClass = ' hover:text-green-700 dark:hover:text-green-500';
 
-	$effect(() => {
-		modosSeleccion[modoSeleccion].selector();
-	});
 	let visible = $state(true);
 	/**
 	 * Cuando se hace click en un elemento del selector, se abre el detalle de ese elemento
@@ -188,7 +246,7 @@
 	{/if}
 
 	<div
-		class="absolute top-0 bottom-0 -left-12 w-12 flex-col justify-center bg-accent p-2 not-md:hidden md:flex"
+		class="bg-accent absolute top-0 bottom-0 -left-12 w-12 flex-col justify-center p-2 not-md:hidden md:flex"
 	>
 		<button
 			aria-label="Mostrar u ocultar selector de materias"
@@ -196,18 +254,21 @@
 			onclick={() => (visible = !visible)}
 		>
 			{#if visible}
-				<FlechaDropdown orientacion="izquierda" ></FlechaDropdown>
+				<FlechaDropdown orientacion="izquierda"></FlechaDropdown>
 			{:else}
-				<FlechaDropdown orientacion="derecha" ></FlechaDropdown>
+				<FlechaDropdown orientacion="derecha"></FlechaDropdown>
 			{/if}
 		</button>
 	</div>
 
 	<div class="relative h-11 w-full peer-not-checked:hidden">
 		<Dropdown bind:open={dropdownOpen} class="w-[100%]">
-			{#each Object.keys(modosSeleccion) as modo}
-				<li class="w-full bg-primary h-10 content-center {modo === modoSeleccion ? activeClass : ''}">
-					<button class="nostyle "
+			{#each Object.keys(modosSeleccionA) as modo}
+				<li
+					class="bg-primary h-10 w-full content-center {modo === modoSeleccion ? activeClass : ''}"
+				>
+					<button
+						class="nostyle"
 						onclick={() => {
 							modoSeleccion = modo;
 							dropdownOpen = false;
@@ -227,51 +288,13 @@
 		class="block h-[calc(100%-2.75rem)] overflow-y-auto p-1 peer-not-checked:hidden"
 		id="selector-materias"
 	>
-		{#each modosSeleccion[modoSeleccion].selector() as seleccionable}
-			<li
-				class="gradiente my-1 flex min-h-12 flex-col justify-center border-b-2 border-solid text-start last:border-b-0"
-				id={'selector-' + seleccionable}
-			>
-				<div class="flex h-auto w-full flex-row items-center justify-between py-3">
-					<button
-						class="nostyle ml-0.5 flex h-full w-[25px] flex-row"
-						onclick={() =>
-							(seleccionMenuExpandido =
-								seleccionMenuExpandido === seleccionable ? '' : seleccionable)}
-					>
-						{#if seleccionMenuExpandido === seleccionable}
-							<FlechaDropdown orientacion="abajo" class="w-full" />
-						{:else}
-							<FlechaDropdown orientacion="derecha" class="w-full " />
-						{/if}
-					</button>
-					<div class="w-full px-2 text-wrap break-words hyphens-auto">
-						{seleccionable}
-					</div>
-					<div class="mr-1 flex h-full w-[75px] flex-row gap-1 p-0">
-						<Agregar click={modosSeleccion[modoSeleccion].agregar} nombre={seleccionable} />
-						<Eliminar click={modosSeleccion[modoSeleccion].eliminar} nombre={seleccionable} />
-					</div>
-				</div>
-				{#if seleccionMenuExpandido === seleccionable}
-					<ul class="flex h-auto w-full flex-col">
-						{#each modosSeleccion[modoSeleccion].menuDetalle(seleccionable) as detalle}
-							<li class="flex min-h-12 flex-row text-start">
-								<div class="flex w-full flex-row items-center justify-between gap-2">
-									<div class="flex h-full w-[50px] flex-row gap-1 p-2"></div>
-									<div class=" w-full px-2 text-wrap break-words hyphens-auto">
-										{detalle.nombre}
-									</div>
-									<div class="flex h-full w-[100px] flex-row gap-1 p-2">
-										<Agregar click={agregarMateriaPorId} nombre={detalle.idMateria} />
-										<Eliminar click={eliminarMateriaPorId} nombre={detalle.idMateria} />
-									</div>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</li>
+		{#each modosSeleccion(modoSeleccion).selector() as seleccionable}
+			<SelectorElementoMateria
+				{seleccionable}
+				modoSeleccion={modosSeleccion(modoSeleccion)}
+				{agregarMateriaPorId}
+				{eliminarMateriaPorId}
+			/>
 		{/each}
 	</ul>
 </aside>

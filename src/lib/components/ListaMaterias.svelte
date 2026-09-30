@@ -45,14 +45,6 @@
 		if (materiaParaDetalles?.id === idMateria) materiaParaDetalles = undefined;
 		materiasSeleccionadas = materiasSeleccionadas.filter((materia) => materia.id !== idMateria);
 	};
-
-	// TODO: Evaluar cambiar modal por sobreescritura de calendario principal.
-	//TODO: resaltar traslapes en selección
-	let informacionMateria = $state({
-		materia: null as Materia | null,
-		traslapes: { materias: [] },
-		eventosSemana: {}
-	});
 </script>
 
 <article
@@ -83,8 +75,8 @@
 					</div>
 					<div class="w-8 content-center">
 						<button
-							class="ratio-1x1 center flex w-full items-center justify-center p-0!"
-							aria-label="Abrir información de la materia"
+							class="has-tooltip ratio-1x1 center flex w-full items-center justify-center p-0!"
+							aria-label="Mostrar información de la materia"
 							onclick={() => {
 								if (materiaParaDetalles === materia) materiaParaDetalles = undefined;
 								else materiaParaDetalles = materia;
@@ -96,6 +88,17 @@
 								<SvgTick />
 							{/if}
 						</button>
+						<div class="tooltip relative -left-12 h-0 w-0">
+							<div
+								class="relative -top-10 -left-28 z-50 w-40 rounded-lg bg-black px-3 py-1.5 font-sans text-sm font-normal break-words whitespace-normal text-white focus:outline-none"
+							>
+								{#if traslapes.get(materia.id)?.length ?? 0 > 0}
+									Presiona para mostrar los traslapes
+								{:else}
+									No hay traslapes con esta materia
+								{/if}
+							</div>
+						</div>
 					</div>
 
 					<div class="w-8 content-center">
